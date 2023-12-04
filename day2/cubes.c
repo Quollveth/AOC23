@@ -131,7 +131,7 @@ int checkGame(char *in){
 
   printf("[id %i | %i red %i green %i blue]\n",gameId,maxR,maxG,maxB);
 
-/*
+
   if(
     maxR <= TOTAL_R &&
     maxG <= TOTAL_G &&
@@ -143,8 +143,6 @@ int checkGame(char *in){
 
   printf("impossible\n");
   return 0;
-*/
-
 }
 
 int matchLUT(char *string){
