@@ -2,6 +2,8 @@
   "files.associations": {
     "string.h": "c",
     "stdio.h": "c",
-    "ranges": "c"
+    "ranges": "c",
+    "string": "c",
+    "ctype.h": "c"
   }
 }
