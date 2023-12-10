@@ -4,6 +4,7 @@
     "stdio.h": "c",
     "ranges": "c",
     "string": "c",
-    "ctype.h": "c"
+    "ctype.h": "c",
+    "string_view": "c"
   }
 }
