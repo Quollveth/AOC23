@@ -18,8 +18,8 @@ typedef struct{
     enum category cat; //unused for maps
 } Range;
 
-#define PEND(X) X->sourceStart + X->length
-#define END(X) X.sourceStart + X.length
+#define END(X) ((X).sourceStart + (X).length)
+#define PEND(X) ((X)->sourceStart + (X)->length) //pointer version
 
 typedef struct node {
   Range data;
@@ -29,7 +29,7 @@ typedef struct node {
 typedef struct list{
   struct node *head;
   struct node *tail;
-} Queue;
+} List;
 
 char **splitString(char *input,char delim); //creates an array of strings composed of an original string split around a delim character
 
@@ -38,14 +38,15 @@ uint32_t convertRange(uint32_t key, Range range); //passes a key through a range
 uint32_t convertMap(uint32_t key, Range map[MAX_RANGES]); //passes a key through a map
 int rangeOverlap(Range r1, Range r2); //is r1 inside r2
 
-//queue functions
+//list functions
 Node *initNode(void);
-Queue *initQueue(void);
-Range dequeue(Queue *q);
-void enqueue(Queue *q, Range data);
+List *initList(void);
+Range deList(List *q, Node *element);
+void enList(List *q, Range data);
 
 int main(int argc, char *argv[])
 {
+
   char *test = {"test"};
   FILE *input = fopen(test,"r");
 
@@ -66,7 +67,7 @@ int main(int argc, char *argv[])
   }
 
   //since we can have an arbitrary number of ranges as they get split during the process seeds are a linked list instead of an array
-  Queue *seedRanges = initQueue();    
+  List *seedRanges = initList();    
 
   char buffer[251];
   buffer[0] = '\0';
@@ -82,7 +83,7 @@ int main(int argc, char *argv[])
     temp.cat = SEED;
 
     temp.destStart = 0; //UNUSED
-    enqueue(seedRanges,temp);
+    enList(seedRanges,temp);
   }
 
   int currentMap = -1; //it would be best to start at 0, but then i'd have to find a different way to do my things since the current way increments it as soon as the loop starts
@@ -112,29 +113,29 @@ int main(int argc, char *argv[])
 
 /////////////////////////////////////////////////////////////////  
 /////////////////////////////////////////////////////////////////  
-
-  /* each seed is a range in a category
-  - check all ranges starting in the current category
-  - if the seed range does not overlap any of these if moves to the next category unchanged
-  - if it does overlap one it's either a partial or a total overlap
-  - in a total overlap the seed is entirely inside the range, so it gets shifted by that range
-  - in a partial overlap the seed is partially inside the range, in that case the seed range is split in two, and both ranges are sent back to processing
-  - by sending a seed back to processing instead of shifting it on the spot we can handle a case where it overlaps multiple ranges, in this scenario it will be split in the order each range is processed
-  - a range can be sent back to processing by being removed from the queue and added back
-  - when every range in the queue has been processed (by reaching the end of the queue) that category is finished, we can reset to the head of the queue and move on to the next category
-  */
+//
+  //each seed is a range in a category
+  //- check all ranges starting in the current category
+  //- if the seed range does not overlap any of these if moves to the next category unchanged
+  //- if it does overlap one it's either a partial or a total overlap
+  //- in a total overlap the seed is entirely inside the range, so it gets shifted by that range
+  //- in a partial overlap the seed is partially inside the range, in that case the seed range is split in two, and both ranges are sent back to processing
+  //- by sending a seed back to processing instead of shifting it on the spot we can handle a case where it overlaps multiple ranges, in this scenario it will be split in the order each range is processed
+  //- a range can be sent back to processing by being removed from the List and added back
+  //- when every range in the List has been processed (by reaching the end of the List) that category is finished, we can reset to the head of the List and move on to the next category
 
   //outer loop, go through each category once
   enum category currentCategory = SEED;
   while(currentCategory != LOCATION){
     Range *current;
-    //navigate through the queue
+    //navigate through the List
     Node *ptr = seedRanges->head;
     while(ptr != NULL){
-      //if a seed is not in this category ignore it
-
       current = &ptr->data;
+
+      //if a seed is not in this category ignore it
       if(current->cat != currentCategory){
+        ptr = ptr->next;
         continue;
       }
 
@@ -150,75 +151,83 @@ int main(int argc, char *argv[])
         }
       }
 
-      Range *overlapped = &almanac[currentCategory][overlap];
-      if(overlap == -1){
+      if(overlapType == 0){
         //there is no overlap, range passes unchanged
         current->cat++;
         ptr = ptr->next;
         continue;
       }
-      if(overlapType == 1 && current->length <= overlapped->length){
+      Range *mappedRange = &almanac[currentCategory][overlap];
+      if(overlapType == 1 && current->length <= mappedRange->length){
         //total overlap, seed range is entirely inside mapped range, it receives an offset and continue
-        current->sourceStart = convertRange(current->sourceStart,*overlapped);
+        current->sourceStart = convertRange(current->sourceStart,*mappedRange);
         current->cat++;
         ptr = ptr->next;
         continue;
       }
-      Range tmp1, tmp2, tmp3;
-      if(current->length > overlapped->length){
-        //seed range encompasses mapped range, remove it from queue, split into 3 and throw these in the queue
-        dequeue(seedRanges);
-        tmp1.sourceStart = current->sourceStart;
-        tmp2.sourceStart = overlapped->sourceStart;
-        tmp3.sourceStart = overlapped->sourceStart + overlapped->length;
+
+      //partial overlap, remove range from queue, split it into 3 and throw these in the list
+      Range tmp1, tmp2, tmp3, seedRange = ptr->data;
+
+      deList(seedRanges,ptr);
+      ptr = seedRanges->head;
+
+      tmp1.destStart = 0; //unused, gets ird of garbage data
+      tmp2.destStart = 0;
+      tmp3.destStart = 0;
+
+      if(seedRange.sourceStart <= mappedRange->sourceStart && (END(seedRange)) >= (PEND(mappedRange))){
+        //seed range encompasses mapped range       
+        tmp1.sourceStart = seedRange.sourceStart;
+        tmp2.sourceStart = mappedRange->sourceStart;
+        tmp3.sourceStart = mappedRange->sourceStart + mappedRange->length;
 
         tmp1.length = tmp2.sourceStart - tmp1.sourceStart;
-        tmp2.length = overlapped->length;
-        tmp3.length = current->length - (tmp1.length + tmp2.length);
+        tmp2.length = mappedRange->length;
+        tmp3.length = seedRange.length - (tmp1.length + tmp2.length);
 
-        goto addRangesToQueue;
+        tmp1.cat = currentCategory;
+        tmp2.cat = currentCategory;
+        tmp3.cat = currentCategory;
+
+        enList(seedRanges,tmp1);
+        enList(seedRanges,tmp2);
+        enList(seedRanges,tmp3);
+
+        continue;
       }
-      //last possible case, seed range only partially overlaps mapped range, remove it, split into 3 and throw these in the queue
-      dequeue(seedRanges);
-      //we need to know if the start or the end of the range is overlapping
-      bool overlapStart = current->sourceStart >= overlapped->sourceStart;
+      //we need to know if the start or the end of the seed range is overlapping the mapped range
+      bool overlapStart = seedRange.sourceStart >= mappedRange->sourceStart;
 
       if(overlapStart){
-        tmp1.sourceStart = overlapped->sourceStart;
-        tmp2.sourceStart = current->sourceStart;
-        tmp3.sourceStart = PEND(overlapped);
+        tmp1.sourceStart = mappedRange->sourceStart;
+        tmp2.sourceStart = seedRange.sourceStart;
 
-        tmp1.length = current->sourceStart - overlapped->sourceStart;
-        tmp2.length = PEND(overlapped) - current->sourceStart;
-        tmp3.length = PEND(current) - tmp3.length;
+        tmp1.length = seedRange.sourceStart - mappedRange->sourceStart;
+        tmp2.length = seedRange.length - tmp1.length;
       } else {
-        tmp1.sourceStart = current->sourceStart;
-        tmp2.sourceStart = overlapped->sourceStart;
-        tmp3.sourceStart = PEND(current);
+        tmp1.sourceStart = seedRange.sourceStart;
+        tmp2.sourceStart = mappedRange->sourceStart;
 
-        tmp1.length = overlapped->sourceStart - current->sourceStart;
-        tmp2.length = PEND(current) - overlapped->sourceStart;
-        tmp3.length = PEND(overlapped) - tmp3.sourceStart;
+        tmp1.length = mappedRange->sourceStart - seedRange.sourceStart;
+        tmp2.length = seedRange.length - tmp1.length;
       }
-      addRangesToQueue:
 
-      tmp1.cat = SEED;
-      tmp2.cat = SEED;
-      tmp3.cat = SEED;
+      tmp1.cat = currentCategory;
+      tmp2.cat = currentCategory;
 
-      enqueue(seedRanges,tmp1);
-      enqueue(seedRanges,tmp2);
-      enqueue(seedRanges,tmp3);
+      enList(seedRanges,tmp1);
+      enList(seedRanges,tmp2);  
 
-      ptr = ptr->next;
+      printf("");
     }
-    //entire queue processed, increase category
+    //entire List processed, increase category
     currentCategory++;
   }
 /////////////////////////////////////////////////////////////////  
 /////////////////////////////////////////////////////////////////  
 
-  //and that's it, just get the smallest value in the queue
+  //and that's it, just get the smallest value in the List
   Node *temp = seedRanges->head;
   uint32_t min = INT32_MAX;
   
@@ -228,19 +237,19 @@ int main(int argc, char *argv[])
     }
     temp = temp->next;
   }
-
   printf("%i\n",min); 
+
 }
 
 int rangeOverlap(Range r1, Range r2){
-  //r1 sourceStarts inside r2
-  bool r1St = r1.sourceStart >= r2.sourceStart && r1.sourceStart <= r2.sourceStart + r2.length;
+  //r1 starts inside r2
+  bool r1St = r1.sourceStart >= r2.sourceStart && r1.sourceStart < END(r2);
   //r1 ends inside r2
-  bool r1En = r1.sourceStart + r1.length >= r2.sourceStart && r1.sourceStart + r1.length <= r2.sourceStart + r2.length;
-  //r2 sourceStarts inside r1
-  bool r2St = r2.sourceStart >= r1.sourceStart && r2.sourceStart <= r1.sourceStart + r1.length;
+  bool r1En = END(r1) > r2.sourceStart && END(r1) <= END(r2);
+  //r2 starts inside r1
+  bool r2St = r2.sourceStart >= r1.sourceStart && r2.sourceStart < END(r1);
   //r2 ends inside r1
-  bool r2En = r2.sourceStart + r2.length >= r1.sourceStart && r2.sourceStart + r2.length <= r1.sourceStart + r1.length;
+  bool r2En = END(r2) > r1.sourceStart && END(r2) <= END(r1);
 
   //range 1 entirely inside range 2 or range 2 entirely inside range 1
   if((r1St && r1En) || (r2St && r2En)){
@@ -254,40 +263,63 @@ int rangeOverlap(Range r1, Range r2){
   return -1;
 }
 
-void enqueue(Queue *q, Range data){
+void enList(List *q, Range data){
   Node *newNode = initNode();
   if(newNode == NULL){
     printf("Memory allocation failed\n");
     return;
   }
   newNode->data = data;
-  if(q->head == NULL){
+  if(q->head == NULL){ //first in list
     q->head = newNode;
     q->tail = newNode;
-  } else {
+  } else { //append to end
     q->tail->next = newNode;
     q->tail = newNode;
   }
 }
 
-Range dequeue(Queue *q){
-  if(q->head == NULL){
-    printf("Queue is empty\n");
-    Range emptyRange = {0, 0, 0};
-    return emptyRange;
-  }
-  Node *temp = q->head;
-  Range data = temp->data;
-  q->head = q->head->next;
-  if(q->head == NULL){
-    q->tail = NULL;
-  }
-  free(temp);
-  return data;
+Range deList(List *q, Node *element){
+    Range emptyRange = {0,0,0};
+    if (q->head == NULL) {
+        // The list is empty
+        return emptyRange;
+    }
+
+    if (q->head == element) {
+        // The element to be removed is at the head of the list
+        q->head = element->next;
+        if (q->tail == element) {
+            // The element is also the tail of the list
+            q->tail = NULL;
+        }
+    } else {
+        // The element is not at the head of the list
+        Node *current = q->head;
+        while (current->next != NULL && current->next != element) {
+            current = current->next;
+        }
+
+        if (current->next == element) {
+            // The element to be removed was found in the list
+            current->next = element->next;
+            if (q->tail == element) {
+                // The element is the tail of the list
+                q->tail = current;
+            }
+        } else {
+            // The element to be removed was not found in the list
+            return emptyRange;
+        }
+    }
+
+    Range data = element->data;
+    free(element);
+    return data;
 }
 
-Queue *initQueue(void){
-  Queue *tempQ = malloc(sizeof(Queue));
+List *initList(void){
+  List *tempQ = malloc(sizeof(List));
   if(tempQ == NULL){
     return NULL;
   }
