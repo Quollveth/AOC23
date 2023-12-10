@@ -1,4 +1,4 @@
 # AOC23
  Adventure Of Code 2023
 
-I'm a student programmer doing aoc for the firt time, i'm not very good at it too
+I'm a first semester compsci student that decided to try advent of code for the first time before giving up on day 5
